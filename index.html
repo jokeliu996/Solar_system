@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <title>太阳系模拟</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script>
+        let scene, camera, renderer, controls;
+        let sun, mercury, venus, earth, mars, jupiter, saturn, uranus, neptune;
+        let planets = [];
+        let textureLoader;
+        let atmosphereShader;
+        let ultraman;
+        
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000);
+
+            // 添加星空背景
+            const starsGeometry = new THREE.BufferGeometry();
+            const starsCount = 10000;
+            const positions = new Float32Array(starsCount * 3);
+            const sizes = new Float32Array(starsCount);
+
+            for (let i = 0; i < starsCount; i++) {
+                positions[i * 3] = (Math.random() - 0.5) * 2000;      // x
+                positions[i * 3 + 1] = (Math.random() - 0.5) * 2000;  // y
+                positions[i * 3 + 2] = (Math.random() - 0.5) * 2000;  // z
+
+                sizes[i] = Math.random() * 2;
+            }
+
+            starsGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            starsGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+            const starsMaterial = new THREE.PointsMaterial({
+                color: 0xffffff,
+                size: 1,
+                transparent: true,
+                opacity: 0.8,
+                sizeAttenuation: true
+            });
+
+            const starField = new THREE.Points(starsGeometry, starsMaterial);
+            scene.add(starField);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+            camera.position.z = 100;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // 添加轨道控制器
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.minDistance = 20;
+            controls.maxDistance = 200;
+
+            // 创建纹理加载器
+            textureLoader = new THREE.TextureLoader();
+            const textures = {
+                sun: './textures/2k_sun.jpg',
+                mercury: './textures/2k_mercury.jpg',
+                venus: './textures/2k_venus_surface.jpg',
+                earth: './textures/2k_earth_daymap.jpg',
+                mars: './textures/2k_mars.jpg',
+                jupiter: './textures/2k_jupiter.jpg',
+                saturn: './textures/2k_saturn.jpg',
+                uranus: './textures/2k_uranus.jpg',
+                neptune: './textures/2k_neptune.jpg'
+            };
+
+       
+
+            // 定义大气层着色器
+            atmosphereShader = {
+                vertexShader: `
+                    varying vec3 vNormal;
+                    void main() {
+                        vNormal = normalize(normalMatrix * normal);
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    varying vec3 vNormal;
+                    uniform vec3 glowColor;
+                    void main() {
+                        float intensity = pow(0.7 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 4.0);
+                        gl_FragColor = vec4(glowColor, 1.0) * intensity;
+                    }
+                `
+            };
+
+            // 创建太阳
+            sun = createCelestialBody(8, textures.sun, true);
+            scene.add(sun);
+
+            // 创建行星
+            mercury = createPlanetSystem(0.8, textures.mercury, 12, 0.04);
+            venus = createPlanetSystem(1.5, textures.venus, 16, 0.015);
+            earth = createPlanetSystem(2, textures.earth, 24, 0.01);
+            mars = createPlanetSystem(1.2, textures.mars, 30, 0.008);
+            jupiter = createPlanetSystem(4, textures.jupiter, 40, 0.005);
+            saturn = createPlanetSystem(3.5, textures.saturn, 50, 0.004);
+            uranus = createPlanetSystem(2.5, textures.uranus, 60, 0.003);
+            neptune = createPlanetSystem(2.4, textures.neptune, 70, 0.002);
+
+            // 添加土星环
+            addSaturnRings(saturn.planet);
+
+            // 添加光源
+            const ambientLight = new THREE.AmbientLight(0x404040);
+            scene.add(ambientLight);
+
+            const pointLight = new THREE.PointLight(0xffffff, 2, 300);
+            scene.add(pointLight);
+
+            // 添加轨道线
+            addOrbits();
+
+            // 加载如来佛模型
+            const loader = new THREE.GLTFLoader();
+            loader.load(
+                'https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/models/gltf/LeePerrySmith/LeePerrySmith.glb',
+                function (gltf) {
+                    const buddha = gltf.scene;
+                    ultraman = buddha;
+                    // 调整佛像的大小和位置
+                    ultraman.scale.set(20, 20, 20);
+                    ultraman.position.set(0, 200, 200);
+                    // 让佛像面向太阳系中心
+                    ultraman.lookAt(0, 0, 0);
+                    // 调整姿势
+                    ultraman.rotation.x = Math.PI / 6;
+                    
+                    // 设置材质为金色
+                    ultraman.traverse((node) => {
+                        if (node.isMesh) {
+                            node.material = new THREE.MeshPhongMaterial({
+                                color: 'red',
+                                emissive: 0x332200,
+                                shininess: 100,
+                                specular: 0xffffff
+                            });
+                        }
+                    });
+                    
+                    scene.add(ultraman);
+
+                   
+
+                    // 添加光源
+                    const spotLight = new THREE.SpotLight(0xffd700, 3);
+                    spotLight.position.set(0, 220, 220);
+                    spotLight.target = ultraman;
+                    spotLight.angle = Math.PI / 6;
+                    spotLight.penumbra = 0.5;
+                    scene.add(spotLight);
+                },
+                undefined,
+                function (error) {
+                    console.error('加载模型时出错:', error);
+                    // 如果加载失败，创建一个简单的替代模型
+                    createSimpleBuddha();
+                }
+            );
+        }
+
+        function createCelestialBody(radius, textureUrl, isSun = false) {
+            const geometry = new THREE.SphereGeometry(radius, 64, 64);
+            const texture = textureLoader.load(textureUrl);
+            texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+            
+          
+            
+            let material;
+            if (isSun) {
+                material = new THREE.MeshBasicMaterial({
+                    map: texture,
+                    emissive: 0xffdd00,
+                    emissiveIntensity: 1.0,
+                    color: 0xffdd00
+                });
+            } else {
+                material = new THREE.MeshStandardMaterial({
+                    map: texture,
+                  
+                    normalScale: new THREE.Vector2(2, 2),
+                    metalness: 0.1,
+                    roughness: 0.8,
+                    envMap: createEnvMap(),
+                    color: getColorForPlanet(textureUrl)
+                });
+            }
+
+            const planet = new THREE.Mesh(geometry, material);
+
+            // 添加大气层
+            if (!isSun && textureUrl.includes('earth')) {
+                const atmosphere = createAtmosphere(radius * 1.1, 0x0066ff);
+                planet.add(atmosphere);
+            }
+
+            // 为太阳添加发光效果
+            if (isSun) {
+                const glow = createGlow(radius * 1.5, 0xffdd00);
+                planet.add(glow);
+            }
+
+            return planet;
+        }
+
+        function getColorForPlanet(textureUrl) {
+            const colors = {
+                sun: 0xffdd00,      // 黄色
+                mercury: 0xa6745c,  // 褐色
+                venus: 0xffd700,    // 金色
+                earth: 0x2233ff,    // 蓝色
+                mars: 0xff4400,     // 红色
+                jupiter: 0xffb90f,  // 橙色
+                saturn: 0xffd700,   // 金色
+                uranus: 0x4fd0e7,   // 青色
+                neptune: 0x4169e1   // 蓝色
+            };
+            
+            for (let planet in colors) {
+                if (textureUrl.includes(planet)) {
+                    return colors[planet];
+                }
+            }
+            return 0xffffff;
+        }
+
+        function createPlanetSystem(radius, textureUrl, orbitRadius, speed) {
+            const orbit = new THREE.Group();
+            const planet = createCelestialBody(radius, textureUrl);
+            planet.position.x = orbitRadius;
+            orbit.add(planet);
+            scene.add(orbit);
+
+            return {
+                orbit: orbit,
+                planet: planet,
+                speed: speed,
+                radius: orbitRadius
+            };
+        }
+
+        function addSaturnRings(saturn) {
+            const ringGeometry = new THREE.RingGeometry(4, 7, 32);
+            const ringMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffd700,
+                side: THREE.DoubleSide,
+                opacity: 0.5,
+                transparent: true
+            });
+            const rings = new THREE.Mesh(ringGeometry, ringMaterial);
+            rings.rotation.x = Math.PI / 2;
+            saturn.add(rings);
+        }
+
+        function addOrbits() {
+            const planets = [mercury, venus, earth, mars, jupiter, saturn, uranus, neptune];
+            planets.forEach(planet => {
+                const orbitGeometry = new THREE.RingGeometry(planet.radius - 0.1, planet.radius + 0.1, 128);
+                const orbitMaterial = new THREE.MeshBasicMaterial({
+                    color: 0x666666,
+                    side: THREE.DoubleSide,
+                    opacity: 0.3,
+                    transparent: true
+                });
+                const orbit = new THREE.Mesh(orbitGeometry, orbitMaterial);
+                orbit.rotation.x = Math.PI / 2;
+                scene.add(orbit);
+            });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // 让星星闪烁
+            const time = Date.now() * 0.0005;
+            const starsGeometry = scene.children[0].geometry;
+            const sizes = starsGeometry.attributes.size.array;
+
+            for (let i = 0; i < sizes.length; i++) {
+                sizes[i] = Math.sin(time + i) * 0.5 + 1;
+            }
+
+            starsGeometry.attributes.size.needsUpdate = true;
+
+            // 太阳自转
+            sun.rotation.y += 0.002;
+
+            // 行星公转和自转
+            const planets = [mercury, venus, earth, mars, jupiter, saturn, uranus, neptune];
+            planets.forEach(planet => {
+                planet.orbit.rotation.y += planet.speed;
+                planet.planet.rotation.y += 0.02;
+            });
+
+            // 让佛像缓慢移动
+            if (ultraman) {
+                const time = Date.now() * 0.001;
+                ultraman.position.y = 200 + Math.sin(time * 0.2) * 5; // 更缓慢的上下浮动
+                ultraman.position.x = Math.sin(time * 0.1) * 20; // 更缓慢的左右移动
+                // 保持佛像始终面向中心，但有轻微的转动
+                ultraman.lookAt(0, Math.sin(time * 0.1) * 10, 0);
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        window.addEventListener('resize', onWindowResize, false);
+
+        // 创建环境贴图
+        function createEnvMap() {
+            const path = 'https://threejs.org/examples/textures/cube/Park2/';
+            const format = '.jpg';
+            const urls = [
+                path + 'px' + format, path + 'nx' + format,
+                path + 'py' + format, path + 'ny' + format,
+                path + 'pz' + format, path + 'nz' + format
+            ];
+            
+            const reflectionCube = new THREE.CubeTextureLoader().load(urls);
+            return reflectionCube;
+        }
+
+        // 创建大气层
+        function createAtmosphere(radius, color) {
+            const geometry = new THREE.SphereGeometry(radius, 64, 64);
+            const material = new THREE.ShaderMaterial({
+                vertexShader: atmosphereShader.vertexShader,
+                fragmentShader: atmosphereShader.fragmentShader,
+                blending: THREE.AdditiveBlending,
+                side: THREE.BackSide,
+                transparent: true,
+                uniforms: {
+                    glowColor: { value: new THREE.Color(color) }
+                }
+            });
+            return new THREE.Mesh(geometry, material);
+        }
+
+        // 创建发光效果
+        function createGlow(radius, color) {
+            const geometry = new THREE.SphereGeometry(radius, 64, 64);
+            const material = new THREE.ShaderMaterial({
+                vertexShader: atmosphereShader.vertexShader,
+                fragmentShader: atmosphereShader.fragmentShader,
+                blending: THREE.AdditiveBlending,
+                side: THREE.BackSide,
+                transparent: true,
+                uniforms: {
+                    glowColor: { value: new THREE.Color(color) }
+                }
+            });
+            return new THREE.Mesh(geometry, material);
+        }
+
+        // 创建简单的替代模型
+        function createSimpleBuddha() {
+            const geometry = new THREE.SphereGeometry(10, 32, 32);
+            const material = new THREE.MeshPhongMaterial({
+                color: 0xffd700,
+                emissive: 0x332200,
+                shininess: 100,
+                specular: 0xffffff
+            });
+            ultraman = new THREE.Mesh(geometry, material);
+            ultraman.position.set(0, 200, 200);
+            ultraman.scale.set(2, 2, 2);
+            scene.add(ultraman);
+        }
+
+        init();
+        animate();
+    </script>
+</body>
+
+</html>
