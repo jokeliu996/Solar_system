@@ -13,10 +13,29 @@
         canvas {
             display: block;
         }
+
+        #playPauseBtn {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            padding: 10px 20px;
+            background-color: rgba(255, 255, 255, 0.7);
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            z-index: 1000;
+            transition: background-color 0.3s;
+        }
+
+        #playPauseBtn:hover {
+            background-color: rgba(255, 255, 255, 0.9);
+        }
     </style>
 </head>
 
 <body>
+    <button id="playPauseBtn">暂停</button>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -27,6 +46,8 @@
         let textureLoader;
         let atmosphereShader;
         let ultraman;
+        let satellites = {}; // 添加卫星对象
+        let isAnimating = true; // 添加动画状态控制变量
         
 
         function init() {
@@ -183,6 +204,10 @@
                     createSimpleBuddha();
                 }
             );
+
+            // 添加按钮事件监听
+            const playPauseBtn = document.getElementById('playPauseBtn');
+            playPauseBtn.addEventListener('click', toggleAnimation);
         }
 
         function createCelestialBody(radius, textureUrl, isSun = false) {
@@ -254,12 +279,47 @@
             const orbit = new THREE.Group();
             const planet = createCelestialBody(radius, textureUrl);
             planet.position.x = orbitRadius;
+            
+            // 添加卫星
+            if (textureUrl.includes('earth')) {
+                // 地球的月球
+                const moon = createSatellite(radius * 0.27, './textures/2k_moon.jpg', radius * 2, 0.015);
+                planet.add(moon.orbit);
+                satellites.moon = moon;
+            } 
+            else if (textureUrl.includes('mars')) {
+                // 火星的卫星：火卫一和火卫二
+                const phobos = createSatellite(radius * 0.1, './textures/2k_phobos.jpg', radius * 1.5, 0.02);
+                const deimos = createSatellite(radius * 0.08, './textures/2k_deimos.jpg', radius * 2, 0.015);
+                planet.add(phobos.orbit);
+
+                planet.add(deimos.orbit);
+                satellites.phobos = phobos;
+                satellites.deimos = deimos;
+            }
+       
+
             orbit.add(planet);
             scene.add(orbit);
 
             return {
                 orbit: orbit,
                 planet: planet,
+                speed: speed,
+                radius: orbitRadius
+            };
+        }
+
+        // 添加创建卫星的函数
+        function createSatellite(radius, textureUrl, orbitRadius, speed) {
+            const orbit = new THREE.Group();
+            const satellite = createCelestialBody(radius, textureUrl);
+            satellite.position.x = orbitRadius;
+            orbit.add(satellite);
+            
+            return {
+                orbit: orbit,
+                body: satellite,
                 speed: speed,
                 radius: orbitRadius
             };
@@ -297,6 +357,11 @@
         function animate() {
             requestAnimationFrame(animate);
 
+            if (!isAnimating) {
+                renderer.render(scene, camera);
+                return;
+            }
+
             // 让星星闪烁
             const time = Date.now() * 0.0005;
             const starsGeometry = scene.children[0].geometry;
@@ -325,6 +390,13 @@
                 ultraman.position.x = Math.sin(time * 0.1) * 20; // 更缓慢的左右移动
                 // 保持佛像始终面向中心，但有轻微的转动
                 ultraman.lookAt(0, Math.sin(time * 0.1) * 10, 0);
+            }
+
+            // 更新卫星位置
+            for (let key in satellites) {
+                const satellite = satellites[key];
+                satellite.orbit.rotation.y += satellite.speed;
+                satellite.body.rotation.y += 0.01;
             }
 
             controls.update();
@@ -398,6 +470,13 @@
             ultraman.position.set(0, 200, 200);
             ultraman.scale.set(2, 2, 2);
             scene.add(ultraman);
+        }
+
+        // 添加切换动画状态的函数
+        function toggleAnimation() {
+            isAnimating = !isAnimating;
+            const playPauseBtn = document.getElementById('playPauseBtn');
+            playPauseBtn.textContent = isAnimating ? '暂停' : '播放';
         }
 
         init();
