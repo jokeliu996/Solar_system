@@ -31,11 +31,72 @@
         #playPauseBtn:hover {
             background-color: rgba(255, 255, 255, 0.9);
         }
+
+        /* 添加速度控制器的样式 */
+        #speedControl {
+            position: fixed;
+            bottom: 20px;
+            left: 120px;
+            background-color: rgba(255, 255, 255, 0.7);
+            padding: 10px 20px;
+            border-radius: 5px;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #speedSlider {
+            width: 100px;
+            cursor: pointer;
+        }
+
+        #speedValue {
+            min-width: 40px;
+            color: #000;
+        }
+
+        #planetInfo {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            border-radius: 8px;
+            font-family: Arial, sans-serif;
+            display: none;
+            max-width: 300px;
+            z-index: 1000;
+        }
+
+        #planetInfo h3 {
+            margin: 0 0 10px 0;
+            color: #ffd700;
+        }
+
+        #planetInfo p {
+            margin: 5px 0;
+            font-size: 14px;
+        }
     </style>
 </head>
 
 <body>
     <button id="playPauseBtn">暂停</button>
+    <!-- 添加速度控制器 -->
+    <div id="speedControl">
+        <span>速度:</span>
+        <input type="range" id="speedSlider" min="0.1" max="5" step="0.1" value="1">
+        <span id="speedValue">1.0x</span>
+    </div>
+    <div id="planetInfo">
+        <h3>行星信息</h3>
+        <p id="planetName"></p>
+        <p id="planetDistance"></p>
+        <p id="planetDiameter"></p>
+        <p id="planetPeriod"></p>
+    </div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -48,6 +109,7 @@
         let ultraman;
         let satellites = {}; // 添加卫星对象
         let isAnimating = true; // 添加动画状态控制变量
+        let speedMultiplier = 1; // 添加速度倍数变量
         
 
         function init() {
@@ -208,6 +270,15 @@
             // 添加按钮事件监听
             const playPauseBtn = document.getElementById('playPauseBtn');
             playPauseBtn.addEventListener('click', toggleAnimation);
+
+            // 添加速度控制器事件监听
+            const speedSlider = document.getElementById('speedSlider');
+            const speedValue = document.getElementById('speedValue');
+            
+            speedSlider.addEventListener('input', function(e) {
+                speedMultiplier = parseFloat(e.target.value);
+                speedValue.textContent = speedMultiplier.toFixed(1) + 'x';
+            });
         }
 
         function createCelestialBody(radius, textureUrl, isSun = false) {
@@ -279,6 +350,13 @@
             const orbit = new THREE.Group();
             const planet = createCelestialBody(radius, textureUrl);
             planet.position.x = orbitRadius;
+            
+            // 添加鼠标事件
+            const planetName = textureUrl.split('/').pop().split('_')[1].split('.')[0];
+            planet.userData.planetInfo = planetData[planetName];
+            
+            planet.addEventListener('mouseover', showPlanetInfo);
+            planet.addEventListener('mouseout', hidePlanetInfo);
             
             // 添加卫星
             if (textureUrl.includes('earth')) {
@@ -374,13 +452,13 @@
             starsGeometry.attributes.size.needsUpdate = true;
 
             // 太阳自转
-            sun.rotation.y += 0.002;
+            sun.rotation.y += 0.002 * speedMultiplier;
 
             // 行星公转和自转
             const planets = [mercury, venus, earth, mars, jupiter, saturn, uranus, neptune];
             planets.forEach(planet => {
-                planet.orbit.rotation.y += planet.speed;
-                planet.planet.rotation.y += 0.02;
+                planet.orbit.rotation.y += planet.speed * speedMultiplier;
+                planet.planet.rotation.y += 0.02 * speedMultiplier;
             });
 
             // 让佛像缓慢移动
@@ -395,8 +473,8 @@
             // 更新卫星位置
             for (let key in satellites) {
                 const satellite = satellites[key];
-                satellite.orbit.rotation.y += satellite.speed;
-                satellite.body.rotation.y += 0.01;
+                satellite.orbit.rotation.y += satellite.speed * speedMultiplier;
+                satellite.body.rotation.y += 0.01 * speedMultiplier;
             }
 
             controls.update();
@@ -478,6 +556,118 @@
             const playPauseBtn = document.getElementById('playPauseBtn');
             playPauseBtn.textContent = isAnimating ? '暂停' : '播放';
         }
+
+        // 在init函数中添加行星数据
+        const planetData = {
+            sun: {
+                name: "太阳",
+                distance: "0",
+                diameter: "1,392,700",
+                period: "-",
+                description: "太阳系的中心天体，一颗黄矮星"
+            },
+            mercury: {
+                name: "水星",
+                distance: "57.9百万公里",
+                diameter: "4,879",
+                period: "88天",
+                description: "最靠近太阳的行星"
+            },
+            venus: {
+                name: "金星",
+                distance: "108.2百万公里",
+                diameter: "12,104",
+                period: "225天",
+                description: "太阳系最热的行星"
+            },
+            earth: {
+                name: "地球",
+                distance: "149.6百万公里",
+                diameter: "12,742",
+                period: "365天",
+                description: "唯一已知存在生命的行星"
+            },
+            mars: {
+                name: "火星",
+                distance: "227.9百万公里",
+                diameter: "6,779",
+                period: "687天",
+                description: "被称为红色星球"
+            },
+            jupiter: {
+                name: "木星",
+                distance: "778.5百万公里",
+                diameter: "139,820",
+                period: "12年",
+                description: "太阳系最大的行星"
+            },
+            saturn: {
+                name: "土星",
+                distance: "1,434百万公里",
+                diameter: "116,460",
+                period: "29年",
+                description: "以其显著的环系统著称"
+            },
+            uranus: {
+                name: "天王星",
+                distance: "2,871百万公里",
+                diameter: "50,724",
+                period: "84年",
+                description: "自转轴几乎平行于其轨道平面"
+            },
+            neptune: {
+                name: "海王星",
+                distance: "4,495百万公里",
+                diameter: "49,244",
+                period: "165年",
+                description: "太阳系最远的行星"
+            }
+        };
+
+        // 添加显示和隐藏行星信息的函数
+        function showPlanetInfo(event) {
+            const planetInfo = document.getElementById('planetInfo');
+            const info = event.target.userData.planetInfo;
+            
+            document.getElementById('planetName').textContent = `名称：${info.name}`;
+            document.getElementById('planetDistance').textContent = `距太阳：${info.distance}`;
+            document.getElementById('planetDiameter').textContent = `直径：${info.diameter}公里`;
+            document.getElementById('planetPeriod').textContent = `公转周期：${info.period}`;
+            
+            planetInfo.style.display = 'block';
+        }
+
+        function hidePlanetInfo() {
+            document.getElementById('planetInfo').style.display = 'none';
+        }
+
+        // 在init函数中添加射线投射器
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        // 添加鼠标移动事件监听器
+        function onMouseMove(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(scene.children, true);
+
+            let hoveredPlanet = false;
+            for (let i = 0; i < intersects.length; i++) {
+                if (intersects[i].object.userData.planetInfo) {
+                    hoveredPlanet = true;
+                    showPlanetInfo({ target: intersects[i].object });
+                    break;
+                }
+            }
+
+            if (!hoveredPlanet) {
+                hidePlanetInfo();
+            }
+        }
+
+        window.addEventListener('mousemove', onMouseMove, false);
 
         init();
         animate();
